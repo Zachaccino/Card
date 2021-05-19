@@ -48,7 +48,7 @@ data RankGuess
 
 
 guessMinRank :: Int -> RankGuess -> RankGuess
-guessMinRank lowerRanks prevGuess@(RankGuessing rank maxRank minRank step) =
+guessMinRank lowerRanks currentGuess@(RankGuessing rank maxRank minRank step) =
   let nextMaxRank = if lowerRanks == 0 then maxRank else pred rank
       nextMinRank = if lowerRanks == 0 then rank else minRank
       nextStep    = ceiling (fromIntegral step / 2)
@@ -56,43 +56,47 @@ guessMinRank lowerRanks prevGuess@(RankGuessing rank maxRank minRank step) =
       converged   = nextMaxRank == nextMinRank
   in  if converged
         then RankGuessed nextMaxRank
-        else prevGuess { rgRank = toEnum $ fromEnum rank + direction * nextStep
-                       , rgMaxRank = nextMaxRank
-                       , rgMinRank = nextMinRank
-                       , rgStep    = nextStep
-                       }
+        else currentGuess
+          { rgRank    = toEnum $ fromEnum rank + direction * nextStep
+          , rgMaxRank = nextMaxRank
+          , rgMinRank = nextMinRank
+          , rgStep    = nextStep
+          }
 guessMinRank _ correctGuess = correctGuess
 
 
 guessMaxRank :: Int -> RankGuess -> RankGuess
-guessMaxRank higherRanks prevGuess@(RankGuessing rank maxRank minRank step) =
-  let nextMaxRank = if higherRanks == 0 then rank else maxRank
-      nextMinRank = if higherRanks == 0 then minRank else succ rank
-      nextStep    = ceiling (fromIntegral step / 2)
-      direction   = if higherRanks == 0 then -1 else 1
-      converged   = nextMaxRank == nextMinRank
-  in  if converged
-        then RankGuessed nextMaxRank
-        else prevGuess { rgRank = toEnum $ fromEnum rank + direction * nextStep
-                       , rgMaxRank = nextMaxRank
-                       , rgMinRank = nextMinRank
-                       , rgStep    = nextStep
-                       }
+guessMaxRank higherRanks currentGuess@(RankGuessing rank maxRank minRank step)
+  = let nextMaxRank = if higherRanks == 0 then rank else maxRank
+        nextMinRank = if higherRanks == 0 then minRank else succ rank
+        nextStep    = ceiling (fromIntegral step / 2)
+        direction   = if higherRanks == 0 then -1 else 1
+        converged   = nextMaxRank == nextMinRank
+    in  if converged
+          then RankGuessed nextMaxRank
+          else currentGuess
+            { rgRank    = toEnum $ fromEnum rank + direction * nextStep
+            , rgMaxRank = nextMaxRank
+            , rgMinRank = nextMinRank
+            , rgStep    = nextStep
+            }
 guessMaxRank _ correctGuess = correctGuess
 
 
 data SuitGuess
-  = SuitGuessing { sgSuits :: [Suit]
-                 , sgMinSuit :: Suit
+  = SuitGuessing { sgMinSuit :: Suit
                  , sgMaxSuit :: Suit
-                 , sgParentGuess :: SuitGuess
+                 , sgCorrects :: Int
+                 , sgParentGuess :: Maybe SuitGuess
                  }
   | SuitGuessed { sgAnswer :: [Suit]
                 }
 
-guessSuits :: Int -> SuitGuess -> (SuitGuess, Int)
-guessSuits corrects prevGuess@(SuitGuessing suits minSuit maxSuit) =
+guessSuits :: SuitGuess -> SuitGuess
+guessSuits currentGuess@(SuitGuessing minSuit maxSuit corrects parentGuess)
+  = let nextMinSuit
 
+guessSuits _ correctGuess = correctGuess
 
 
 feedback :: [Card] -> [Card] -> (Int, Int, Int, Int, Int)
