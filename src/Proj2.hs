@@ -7,6 +7,8 @@ module Proj2
   , GameState
   , testMinRankGuess
   , testMaxRankGuess
+  , testFeedback
+  , testFeedbackRawOutput
   )
 where
 
@@ -14,7 +16,12 @@ where
 import qualified Card
 import           Card                           ( Card(Card)
                                                 , Rank(Queen, R2, R3, R4, Ace)
-                                                , Suit(Spade, Heart, Diamond)
+                                                , Suit
+                                                  ( Spade
+                                                  , Heart
+                                                  , Diamond
+                                                  , Club
+                                                  )
                                                 )
 import qualified Data.Set                      as Set
 import           Data.Set                       ( Set )
@@ -174,8 +181,21 @@ testMaxRankGuess highestAnsRank =
                                    cutoff
             RankGuessed rank -> (guesses + 1, history ++ [rank], rank)
 
-testFeedback :: [(Int, Int, Int, Int, Int)]
-testFeedback =
-  [ feedback [Card Spade R3, Card Heart R4] [Card Heart R4, Card Spade R3]
-  , feedback [Card Spade R3, Card Heart R4] [Card Spade R3, Card Heart R4]
+testFeedbackRawOutput :: [(Int, Int, Int, Int, Int)]
+testFeedbackRawOutput =
+  [ feedback [Card Club R3, Card Heart R4]    [Card Heart R4, Card Club R3]
+  , feedback [Card Club R3, Card Heart R4]    [Card Club R3, Card Heart R3]
+  , feedback [Card Diamond R3, Card Spade R3] [Card Club R3, Card Heart R3]
+  , feedback [Card Club R3, Card Heart R4]    [Card Heart R2, Card Heart R3]
+  , feedback [Card Club Ace, Card Club R2]    [Card Club R3, Card Heart R4]
   ]
+
+testFeedback :: Bool
+testFeedback =
+  testFeedbackRawOutput
+    == [ (2, 0, 2, 0, 2)
+       , (1, 0, 1, 1, 2)
+       , (0, 0, 2, 0, 0)
+       , (0, 0, 1, 1, 1)
+       , (0, 1, 0, 1, 1)
+       ]
