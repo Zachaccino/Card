@@ -30,12 +30,12 @@ import qualified Data.List                     as List
 data GameState
   = GameReducing { gsMinRankGuess :: RankGuess
                  , gsMaxRankGuess :: RankGuess
+                 , gsSuitsGuess :: SuitGuess
                  }
   | GameGuessing
   | GameGuessed
 
 
--- Guessing the Answer Max or Min Rank
 data RankGuess
   = RankGuessing { rgRank :: Rank
                  , rgMaxRank :: Rank
@@ -79,6 +79,20 @@ guessMaxRank higherRanks prevGuess@(RankGuessing rank maxRank minRank step) =
                        , rgStep    = nextStep
                        }
 guessMaxRank _ correctGuess = correctGuess
+
+
+data SuitGuess
+  = SuitGuessing { sgSuits :: [Suit]
+                 , sgMinSuit :: Suit
+                 , sgMaxSuit :: Suit
+                 , sgParentGuess :: SuitGuess
+                 }
+  | SuitGuessed { sgAnswer :: [Suit]
+                }
+
+guessSuits :: Int -> SuitGuess -> (SuitGuess, Int)
+guessSuits corrects prevGuess@(SuitGuessing suits minSuit maxSuit) =
+
 
 
 feedback :: [Card] -> [Card] -> (Int, Int, Int, Int, Int)
