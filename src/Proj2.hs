@@ -12,12 +12,13 @@ where
 
 
 import qualified Card
-import           Card                           ( Card
-                                                , Rank(Queen, R2)
-                                                , Suit
+import           Card                           ( Card(Card)
+                                                , Rank(Queen, R2, R3, R4, Ace)
+                                                , Suit(Spade, Heart, Diamond)
                                                 )
 import qualified Data.Set                      as Set
 import           Data.Set                       ( Set )
+import qualified Data.List                     as List
 
 data GameState
   = GameReducing { gsMinRankGuess :: RankGuess
@@ -75,18 +76,44 @@ guessMaxRank _ correctGuess = correctGuess
 
 feedback :: [Card] -> [Card] -> (Int, Int, Int, Int, Int)
 feedback answer guess =
-  let maxRank = foldl (\acc card -> max acc $ Card.rank card)
-                      (minBound :: Rank)
-                      answer
-      minRank = foldl (\acc card -> min acc $ Card.rank card)
-                      (maxBound :: Rank)
-                      answer
-      suits = foldl (\acc card -> Set.insert (Card.suit card) acc)
-                    (mempty :: Set Suit)
-                    answer
-      correctCards = Set.intersection (Set.fromList answer :: Set Card)
-                                      (Set.fromList guess :: Set Card)
-  in  (1, 1, 1, 1, 1)
+  let
+    maxGuessRank =
+      foldl (\acc card -> max acc $ Card.rank card) (minBound :: Rank) guess
+    minGuessRank =
+      foldl (\acc card -> min acc $ Card.rank card) (maxBound :: Rank) guess
+    answerSuits =
+      List.sort $ foldl (\acc card -> Card.suit card : acc) [] answer
+    guessSuits = List.sort $ foldl (\acc card -> Card.suit card : acc) [] guess
+    answerRanks =
+      List.sort $ foldl (\acc card -> Card.rank card : acc) [] answer
+    guessRanks = List.sort $ foldl (\acc card -> Card.rank card : acc) [] guess
+    correctCount = Set.size $ Set.intersection
+      (Set.fromList answer :: Set Card)
+      (Set.fromList guess :: Set Card)
+    lowerCount = foldl
+      (\acc card -> if Card.rank card < minGuessRank then acc + 1 else acc)
+      0
+      answer
+    higherCount = foldl
+      (\acc card -> if Card.rank card > maxGuessRank then acc + 1 else acc)
+      0
+      answer
+    matchingSuitCount = matchCount answerSuits guessSuits
+    matchingRankCount = matchCount answerRanks guessRanks
+  in
+    ( correctCount
+    , lowerCount
+    , matchingRankCount
+    , higherCount
+    , matchingSuitCount
+    )
+ where
+  matchCount :: (Ord a, Eq a) => [a] -> [a] -> Int
+  matchCount [] _  = 0
+  matchCount _  [] = 0
+  matchCount (x : xs) (y : ys) | x == y    = matchCount xs ys + 1
+                               | x > y     = matchCount (x : xs) ys
+                               | otherwise = matchCount xs (y : ys)
 
 
 
@@ -146,3 +173,9 @@ testMaxRankGuess highestAnsRank =
                                    (history ++ [rgRank nextGuess])
                                    cutoff
             RankGuessed rank -> (guesses + 1, history ++ [rank], rank)
+
+testFeedback :: [(Int, Int, Int, Int, Int)]
+testFeedback =
+  [ feedback [Card Spade R3, Card Heart R4] [Card Heart R4, Card Spade R3]
+  , feedback [Card Spade R3, Card Heart R4] [Card Spade R3, Card Heart R4]
+  ]
