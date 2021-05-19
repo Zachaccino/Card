@@ -14,8 +14,10 @@ where
 import qualified Card
 import           Card                           ( Card
                                                 , Rank(Queen, R2)
+                                                , Suit
                                                 )
-
+import qualified Data.Set                      as Set
+import           Data.Set                       ( Set )
 
 data GameState
   = GameReducing { gsMinRankGuess :: RankGuess
@@ -25,6 +27,7 @@ data GameState
   | GameGuessed
 
 
+-- Guessing the Answer Max or Min Rank
 data RankGuess
   = RankGuessing { rgRank :: Rank
                  , rgMaxRank :: Rank
@@ -38,10 +41,10 @@ data RankGuess
 
 guessMinRank :: Int -> RankGuess -> RankGuess
 guessMinRank lowerRanks prevGuess@(RankGuessing rank maxRank minRank step) =
-  let nextMaxRank = if lowerRanks == 0 then rank else maxRank
-      nextMinRank = if lowerRanks == 0 then minRank else succ rank
+  let nextMaxRank = if lowerRanks == 0 then maxRank else pred rank
+      nextMinRank = if lowerRanks == 0 then rank else minRank
       nextStep    = ceiling (fromIntegral step / 2)
-      direction   = if lowerRanks == 0 then -1 else 1
+      direction   = if lowerRanks == 0 then 1 else -1
       converged   = nextMaxRank == nextMinRank
   in  if converged
         then RankGuessed nextMaxRank
@@ -52,12 +55,13 @@ guessMinRank lowerRanks prevGuess@(RankGuessing rank maxRank minRank step) =
                        }
 guessMinRank _ correctGuess = correctGuess
 
+
 guessMaxRank :: Int -> RankGuess -> RankGuess
 guessMaxRank higherRanks prevGuess@(RankGuessing rank maxRank minRank step) =
-  let nextMaxRank = if higherRanks == 0 then maxRank else pred rank
-      nextMinRank = if higherRanks == 0 then rank else minRank
+  let nextMaxRank = if higherRanks == 0 then rank else maxRank
+      nextMinRank = if higherRanks == 0 then minRank else succ rank
       nextStep    = ceiling (fromIntegral step / 2)
-      direction   = if higherRanks == 0 then 1 else -1
+      direction   = if higherRanks == 0 then -1 else 1
       converged   = nextMaxRank == nextMinRank
   in  if converged
         then RankGuessed nextMaxRank
@@ -68,6 +72,7 @@ guessMaxRank higherRanks prevGuess@(RankGuessing rank maxRank minRank step) =
                        }
 guessMaxRank _ correctGuess = correctGuess
 
+
 feedback :: [Card] -> [Card] -> (Int, Int, Int, Int, Int)
 feedback answer guess =
   let maxRank = foldl (\acc card -> max acc $ Card.rank card)
@@ -76,6 +81,11 @@ feedback answer guess =
       minRank = foldl (\acc card -> min acc $ Card.rank card)
                       (maxBound :: Rank)
                       answer
+      suits = foldl (\acc card -> Set.insert (Card.suit card) acc)
+                    (mempty :: Set Suit)
+                    answer
+      correctCards = Set.intersection (Set.fromList answer :: Set Card)
+                                      (Set.fromList guess :: Set Card)
   in  (1, 1, 1, 1, 1)
 
 
@@ -91,23 +101,23 @@ nextGuess a b = a
 
 -- Unit Tests
 testMinRankGuess :: Rank -> (Int, [Rank], Rank)
-testMinRankGuess target =
+testMinRankGuess lowestAnsRank =
   let initialGuess = RankGuessing { rgRank    = toEnum 0
                                   , rgMaxRank = toEnum 12
                                   , rgMinRank = toEnum 0
                                   , rgStep    = 12
                                   }
-  in  loop initialGuess target 0 [] 10
+  in  loop initialGuess lowestAnsRank 0 [] 10
  where
   loop :: RankGuess -> Rank -> Int -> [Rank] -> Int -> (Int, [Rank], Rank)
-  loop prevGuess target guesses history cutoff =
-    let feedback  = if rgRank prevGuess < target then 1 else 0
+  loop prevGuess lowestAnsRank guesses history cutoff =
+    let feedback  = if lowestAnsRank < rgRank prevGuess then 1 else 0
         nextGuess = guessMinRank feedback prevGuess
     in  if guesses >= cutoff
           then (guesses, history, R2)
           else case nextGuess of
             RankGuessing{} -> loop nextGuess
-                                   target
+                                   lowestAnsRank
                                    (guesses + 1)
                                    (history ++ [rgRank nextGuess])
                                    cutoff
@@ -115,23 +125,23 @@ testMinRankGuess target =
 
 
 testMaxRankGuess :: Rank -> (Int, [Rank], Rank)
-testMaxRankGuess target =
+testMaxRankGuess highestAnsRank =
   let initialGuess = RankGuessing { rgRank    = toEnum 12
                                   , rgMaxRank = toEnum 12
                                   , rgMinRank = toEnum 0
                                   , rgStep    = 12
                                   }
-  in  loop initialGuess target 0 [] 10
+  in  loop initialGuess highestAnsRank 0 [] 10
  where
   loop :: RankGuess -> Rank -> Int -> [Rank] -> Int -> (Int, [Rank], Rank)
-  loop prevGuess target guesses history cutoff =
-    let feedback  = if rgRank prevGuess > target then 1 else 0
+  loop prevGuess highestAnsRank guesses history cutoff =
+    let feedback  = if highestAnsRank > rgRank prevGuess then 1 else 0
         nextGuess = guessMaxRank feedback prevGuess
     in  if guesses >= cutoff
           then (guesses, history, R2)
           else case nextGuess of
             RankGuessing{} -> loop nextGuess
-                                   target
+                                   highestAnsRank
                                    (guesses + 1)
                                    (history ++ [rgRank nextGuess])
                                    cutoff

@@ -1,15 +1,15 @@
-{ mkDerivation, base, hello, hpack, stdenv }:
+{ mkDerivation, base, containers, hello, hpack, stdenv }:
 mkDerivation {
   pname = "card";
   version = "0.1.0.0";
   src = ./.;
   isLibrary = true;
   isExecutable = true;
-  libraryHaskellDepends = [ base ];
+  libraryHaskellDepends = [ base containers ];
   libraryToolDepends = [ hello hpack ];
-  executableHaskellDepends = [ base ];
+  executableHaskellDepends = [ base containers ];
   executableToolDepends = [ hello ];
-  testHaskellDepends = [ base ];
+  testHaskellDepends = [ base containers ];
   testToolDepends = [ hello ];
   prePatch = "hpack";
   homepage = "https://github.com/MatrixAI/Haskell-Demo#readme";
