@@ -1,17 +1,12 @@
-{-# LANGUAGE BlockArguments #-}
--- Replace this comment with your opening documentation.  Leave this module declaration as is:
 module Proj2
-  ( feedback
-  , initialGuess
-  , nextGuess
-  , GameState
-  , testMinRankGuess
+  ( testMinRankGuess
   , testMaxRankGuess
-  , testFeedback
-  , testFeedbackRawOutput
   , guessSuits
+  , GameState
   , SuitGuess(..)
-  , testGame
+  -- ( feedback
+  -- , initialGuess
+  -- , nextGuess
   )
 where
 
@@ -41,96 +36,92 @@ import           Data.Set                       ( Set )
 import qualified Data.List                     as List
 import qualified Data.Maybe                    as Maybe
 
+
 data GameState
-  = InitialGuess { gsSuitsGuess :: SuitGuess
-                 }
-  | GameReducing { gsMinRankGuess :: RankGuess
-                 , gsMaxRankGuess :: RankGuess
-                 , gsSuitsGuess :: SuitGuess
-                 }
-  | GameGuessing
-  | GameGuessed
+  = InitialGuess
+  | FindingMax
+  | FindingMin
+  | FindingSuit
+  | Guessing
+  | Done
   deriving (Eq, Show)
 
+
 data RankGuess
-  = RankGuessing { rgRank :: Rank
-                 , rgMaxRank :: Rank
-                 , rgMinRank :: Rank
-                 , rgStep :: Int
-                 }
-  | RankGuessed  { rgAnswer :: Rank
-                 }
+  = RankGuess { rgRank :: Rank
+              , rgMaxRank :: Rank
+              , rgMinRank :: Rank
+              , rgStep :: Int
+              , rgComplete :: Bool
+              }
   deriving (Eq, Show)
+
+data SuitGuess
+  = SuitGuess { sgSuit :: Suit
+              , sgFound :: [Suit]
+              , sgComplete :: Bool
+              }
+    deriving(Eq, Show)
 
 
 guessMinRank :: Int -> RankGuess -> RankGuess
-guessMinRank lowerRanks currentGuess@(RankGuessing rank maxRank minRank step) =
-  let nextMaxRank = if lowerRanks == 0 then maxRank else pred rank
-      nextMinRank = if lowerRanks == 0 then rank else minRank
-      nextStep    = ceiling (fromIntegral step / 2)
-      direction   = if lowerRanks == 0 then 1 else -1
-      converged   = nextMaxRank == nextMinRank
-  in  if converged
-        then RankGuessed nextMaxRank
-        else currentGuess
-          { rgRank    = toEnum $ fromEnum rank + direction * nextStep
-          , rgMaxRank = nextMaxRank
-          , rgMinRank = nextMinRank
-          , rgStep    = nextStep
-          }
-guessMinRank _ correctGuess = correctGuess
-
-isRankGuessed :: RankGuess -> Bool
-isRankGuessed RankGuessing{} = False
-isRankGuessed RankGuessed{}  = True
-
-getRank :: RankGuess -> Rank
-getRank RankGuessing { rgRank = rank }  = rank
-getRank RankGuessed { rgAnswer = rank } = rank
-
-guessMaxRank :: Int -> RankGuess -> RankGuess
-guessMaxRank higherRanks currentGuess@(RankGuessing rank maxRank minRank step)
-  = let nextMaxRank = if higherRanks == 0 then rank else maxRank
-        nextMinRank = if higherRanks == 0 then minRank else succ rank
+guessMinRank lowerRanks currentGuess@(RankGuess rank maxRank minRank step completed)
+  | completed
+  = currentGuess
+  | otherwise
+  = let nextMaxRank = if lowerRanks == 0 then maxRank else pred rank
+        nextMinRank = if lowerRanks == 0 then rank else minRank
         nextStep    = ceiling (fromIntegral step / 2)
-        direction   = if higherRanks == 0 then -1 else 1
+        direction   = if lowerRanks == 0 then 1 else -1
         converged   = nextMaxRank == nextMinRank
     in  if converged
-          then RankGuessed nextMaxRank
+          then currentGuess { rgRank     = nextMaxRank
+                            , rgMaxRank  = nextMaxRank
+                            , rgMinRank  = nextMinRank
+                            , rgStep     = nextStep
+                            , rgComplete = True
+                            }
           else currentGuess
             { rgRank    = toEnum $ fromEnum rank + direction * nextStep
             , rgMaxRank = nextMaxRank
             , rgMinRank = nextMinRank
             , rgStep    = nextStep
             }
-guessMaxRank _ correctGuess = correctGuess
 
-
-data SuitGuess
-  = SuitGuessing { sgSuit :: Suit
-                 , sgFound :: [Suit]
-                 }
-  | SuitGuessed  { sgAnswer :: [Suit]
-                 }
-    deriving(Eq, Show)
+guessMaxRank :: Int -> RankGuess -> RankGuess
+guessMaxRank higherRanks currentGuess@(RankGuess rank maxRank minRank step completed)
+  | completed
+  = currentGuess
+  | otherwise
+  = let nextMaxRank = if higherRanks == 0 then rank else maxRank
+        nextMinRank = if higherRanks == 0 then minRank else succ rank
+        nextStep    = ceiling (fromIntegral step / 2)
+        direction   = if higherRanks == 0 then -1 else 1
+        converged   = nextMaxRank == nextMinRank
+    in  if converged
+          then currentGuess { rgRank     = nextMaxRank
+                            , rgMaxRank  = nextMaxRank
+                            , rgMinRank  = nextMinRank
+                            , rgStep     = nextStep
+                            , rgComplete = True
+                            }
+          else currentGuess
+            { rgRank    = toEnum $ fromEnum rank + direction * nextStep
+            , rgMaxRank = nextMaxRank
+            , rgMinRank = nextMinRank
+            , rgStep    = nextStep
+            }
 
 guessSuits :: Bool -> SuitGuess -> SuitGuess
-guessSuits correct currentGuess@(SuitGuessing suit found)
+guessSuits correct currentGuess@(SuitGuess suit found completed)
+  | completed = currentGuess
   | suit == maxBound = if correct
-    then SuitGuessed (suit : found)
-    else SuitGuessed found
+    then currentGuess { sgFound = suit : found, sgComplete = True }
+    else currentGuess { sgFound = found, sgComplete = True }
   | otherwise = if correct
-    then SuitGuessing { sgSuit = succ suit, sgFound = suit : found }
-    else SuitGuessing { sgSuit = succ suit, sgFound = found }
-guessSuits _ correctGuess = correctGuess
+    then currentGuess { sgSuit = succ suit, sgFound = suit : found }
+    else currentGuess { sgSuit = succ suit, sgFound = found }
 
-isSuitGuessed :: SuitGuess -> Bool
-isSuitGuessed SuitGuessing{} = False
-isSuitGuessed SuitGuessed{}  = True
-
-getSuit :: SuitGuess -> Suit
-getSuit (SuitGuessing suit _ ) = suit
-getSuit (SuitGuessed (x : xs)) = x
 
 feedback :: [Card] -> [Card] -> (Int, Int, Int, Int, Int)
 feedback answer guess =
@@ -178,80 +169,27 @@ feedback answer guess =
 initialGuess :: Int -> ([Card], GameState)
 initialGuess size =
   let initialSuit  = Club
-      suitGuess    = SuitGuessing { sgSuit = initialSuit, sgFound = [] }
+      suitGuess    = SuitGuess { sgSuit = initialSuit, sgFound = [] }
       baseCards    = [Card initialSuit R6, Card initialSuit R10]
       miscCards    = [Card initialSuit R7, Card initialSuit R9]
       initialCards = take (size - 2) miscCards ++ baseCards
   in  (initialCards, InitialGuess suitGuess)
 
 
-nextGuess
-  :: ([Card], GameState) -> (Int, Int, Int, Int, Int) -> ([Card], GameState)
-nextGuess (initialGuess, InitialGuess suitGuess) (corrects, lowerRanks, correctRanks, higherRanks, correctSuits)
-  = let initMaxRank  = if higherRanks == 0 then R10 else maxBound
-        initMinRank  = if lowerRanks == 0 then R6 else minBound
-        minRankGuess = RankGuessing
-          { rgRank    = initMinRank
-          , rgMaxRank = initMaxRank
-          , rgMinRank = initMinRank
-          , rgStep    = fromEnum initMaxRank - fromEnum initMinRank
-          }
-        maxRankGuess = RankGuessing
-          { rgRank    = initMaxRank
-          , rgMaxRank = initMaxRank
-          , rgMinRank = initMinRank
-          , rgStep    = fromEnum initMaxRank - fromEnum initMinRank
-          }
-        nextSuitGuess = guessSuits (correctSuits > 0) suitGuess
-        nextGameState = GameReducing { gsMinRankGuess = minRankGuess
-                                     , gsMaxRankGuess = maxRankGuess
-                                     , gsSuitsGuess   = nextSuitGuess
-                                     }
-        baseGuess =
-            [ Card (sgSuit nextSuitGuess) initMinRank
-            , Card (sgSuit nextSuitGuess) initMaxRank
-            ]
-        miscGuess =
-            [ Card (sgSuit nextSuitGuess) (succ initMinRank)
-            , Card (sgSuit nextSuitGuess) (pred initMaxRank)
-            ]
-        nextGuess = take (length initialGuess - 2) miscGuess ++ baseGuess
-    in  (nextGuess, nextGameState)
 
-nextGuess (currentGuess, gs@GameReducing{}) (corrects, lowerRanks, correctRanks, higherRanks, correctSuits)
-  = let minRankGuess = gsMinRankGuess gs
-        maxRankGuess = gsMaxRankGuess gs
-        suitGuess    = gsSuitsGuess gs
-        reduced =
-            isRankGuessed minRankGuess
-              && isRankGuessed maxRankGuess
-              && isSuitGuessed suitGuess
-        nextMinRankGuess = guessMinRank lowerRanks minRankGuess
-        nextMaxRankGuess = guessMaxRank higherRanks maxRankGuess
-        nextSuitGuess    = guessSuits (correctSuits > 0) suitGuess
-        nextGameState    = gs { gsMinRankGuess = nextMinRankGuess
-                              , gsMaxRankGuess = nextMaxRankGuess
-                              , gsSuitsGuess   = nextSuitGuess
-                              }
-        baseGuess =
-            [ Card (getSuit nextSuitGuess) (getRank nextMinRankGuess)
-            , Card (getSuit nextSuitGuess) (getRank nextMaxRankGuess)
-            ]
-        miscGuess =
-            [ Card (getSuit nextSuitGuess) (getRank nextMinRankGuess)
-            , Card (getSuit nextSuitGuess) (getRank nextMaxRankGuess)
-            ]
-        nextGuess = take (length currentGuess - 2) miscGuess ++ baseGuess
-    in  (nextGuess, nextGameState)
+
+
+
 
 -- Unit Tests
 testMinRankGuess :: Rank -> (Int, [Rank], Rank)
 testMinRankGuess lowestAnsRank =
-  let initialGuess = RankGuessing { rgRank    = toEnum 4
-                                  , rgMaxRank = toEnum 8
-                                  , rgMinRank = toEnum 4
-                                  , rgStep    = 4
-                                  }
+  let initialGuess = RankGuess { rgRank     = toEnum 0
+                               , rgMaxRank  = toEnum 12
+                               , rgMinRank  = toEnum 0
+                               , rgStep     = 12
+                               , rgComplete = False
+                               }
   in  loop initialGuess lowestAnsRank 0 [] 10
  where
   loop :: RankGuess -> Rank -> Int -> [Rank] -> Int -> (Int, [Rank], Rank)
@@ -261,21 +199,24 @@ testMinRankGuess lowestAnsRank =
     in  if guesses >= cutoff
           then (guesses, history, R2)
           else case nextGuess of
-            RankGuessing{} -> loop nextGuess
-                                   lowestAnsRank
-                                   (guesses + 1)
-                                   (history ++ [rgRank nextGuess])
-                                   cutoff
-            RankGuessed rank -> (guesses + 1, history ++ [rank], rank)
+            RankGuess { rgComplete = False } -> loop
+              nextGuess
+              lowestAnsRank
+              (guesses + 1)
+              (history ++ [rgRank nextGuess])
+              cutoff
+            RankGuess { rgRank = rank, rgComplete = True } ->
+              (guesses + 1, history ++ [rank], rank)
 
 
 testMaxRankGuess :: Rank -> (Int, [Rank], Rank)
 testMaxRankGuess highestAnsRank =
-  let initialGuess = RankGuessing { rgRank    = toEnum 12
-                                  , rgMaxRank = toEnum 12
-                                  , rgMinRank = toEnum 0
-                                  , rgStep    = 12
-                                  }
+  let initialGuess = RankGuess { rgRank     = toEnum 12
+                               , rgMaxRank  = toEnum 12
+                               , rgMinRank  = toEnum 0
+                               , rgStep     = 12
+                               , rgComplete = False
+                               }
   in  loop initialGuess highestAnsRank 0 [] 10
  where
   loop :: RankGuess -> Rank -> Int -> [Rank] -> Int -> (Int, [Rank], Rank)
@@ -285,51 +226,11 @@ testMaxRankGuess highestAnsRank =
     in  if guesses >= cutoff
           then (guesses, history, R2)
           else case nextGuess of
-            RankGuessing{} -> loop nextGuess
-                                   highestAnsRank
-                                   (guesses + 1)
-                                   (history ++ [rgRank nextGuess])
-                                   cutoff
-            RankGuessed rank -> (guesses + 1, history ++ [rank], rank)
-
-testFeedbackRawOutput :: [(Int, Int, Int, Int, Int)]
-testFeedbackRawOutput =
-  [ feedback [Card Club R3, Card Heart R4]    [Card Heart R4, Card Club R3]
-  , feedback [Card Club R3, Card Heart R4]    [Card Club R3, Card Heart R3]
-  , feedback [Card Diamond R3, Card Spade R3] [Card Club R3, Card Heart R3]
-  , feedback [Card Club R3, Card Heart R4]    [Card Heart R2, Card Heart R3]
-  , feedback [Card Club Ace, Card Club R2]    [Card Club R3, Card Heart R4]
-  ]
-
-testFeedback :: Bool
-testFeedback =
-  testFeedbackRawOutput
-    == [ (2, 0, 2, 0, 2)
-       , (1, 0, 1, 1, 2)
-       , (0, 0, 2, 0, 0)
-       , (0, 0, 1, 1, 1)
-       , (0, 1, 0, 1, 1)
-       ]
-
-
-testGame :: [Card] -> [([Card], GameState)]
-testGame answer =
-  let initialGameState = initialGuess $ length answer
-      initialFeedback  = feedback answer (fst initialGameState)
-      initialHistory   = [initialGameState]
-  in  loop initialGameState initialHistory 0 4
- where
-  loop
-    :: ([Card], GameState)
-    -> [([Card], GameState)]
-    -> Int
-    -> Int
-    -> [([Card], GameState)]
-  loop gs history c cutoff =
-    let currentFeedback = feedback answer (fst gs)
-        nextGameState   = nextGuess gs currentFeedback
-        nextHistory     = history ++ [nextGameState]
-    in  if c > cutoff
-          then nextHistory
-          else loop nextGameState nextHistory (c + 1) cutoff
-
+            RankGuess { rgComplete = False } -> loop
+              nextGuess
+              highestAnsRank
+              (guesses + 1)
+              (history ++ [rgRank nextGuess])
+              cutoff
+            RankGuess { rgRank = rank, rgComplete = True } ->
+              (guesses + 1, history ++ [rank], rank)
