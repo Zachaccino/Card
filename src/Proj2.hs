@@ -9,6 +9,8 @@ module Proj2
   , testMaxRankGuess
   , testFeedback
   , testFeedbackRawOutput
+  , guessSuits
+  , SuitGuess(..)
   )
 where
 
@@ -29,7 +31,10 @@ import qualified Data.List                     as List
 import qualified Data.Maybe                    as Maybe
 
 data GameState
-  = GameReducing { gsMinRankGuess :: RankGuess
+  = InitialGuess { gsInitialGuess :: [Card]
+                 , gsCardCount :: Int
+                 }
+  | GameReducing { gsMinRankGuess :: RankGuess
                  , gsMaxRankGuess :: RankGuess
                  , gsSuitsGuess :: SuitGuess
                  }
@@ -45,7 +50,7 @@ data RankGuess
                  }
   | RankGuessed  { rgAnswer :: Rank
                  }
-  deriving (Eq, Ord, Show)
+  deriving (Eq, Show)
 
 
 guessMinRank :: Int -> RankGuess -> RankGuess
@@ -85,168 +90,22 @@ guessMaxRank _ correctGuess = correctGuess
 
 
 data SuitGuess
-  = SuitGuess { sgMinSuit :: Suit
-              , sgMaxSuit :: Suit
-              , sgProcessedLeft :: Bool
-              , sgCorrects :: Maybe Int
-              , sgFound :: Int
-              }
+  = SuitGuessing { sgSuit :: Suit
+                 , sgFound :: [Suit]
+                 }
+  | SuitGuessed  { sgAnswer :: [Suit]
+                 }
+    deriving(Eq, Show)
 
-stackPush :: a -> [a] -> [a]
-stackPush x stack = x : stack
-
-stackPop :: [a] -> (Maybe a, [a])
-stackPop (x : xs) = (Just x, xs)
-stackPop []       = (Nothing, [])
-
-guessSuits :: [SuitGuess] -> ([SuitGuess], [Suit])
-guessSuits [] = ([], [])
-guessSuits stack =
-  let (Just currentGuess, stack) = stackPop stack
-  in
-    if (sgMinSuit currentGuess == sgMaxSuit currentGuess)
-       || (Maybe.fromJust (sgCorrects currentGuess) == sgFound currentGuess)
-    then
-      let (parentGuess, stack) = stackPop stack
-      in  if Maybe.isNothing parentGuess
-            then (stack, [])
-            else
-              let parentGuess' = (Maybe.fromJust parentGuess)
-                    { sgFound = sgFound (Maybe.fromJust parentGuess) + 1
-                    }
-                  stack'               = stackPush parentGuess' stack
-                  (nextStack, results) = guessSuits stack'
-              in  ( nextStack
-                  , results
-                    ++ [ sgMinSuit currentGuess
-                       | Maybe.fromJust (sgCorrects currentGuess) /= 0
-                       ]
-                  )
-    else
-      if fromEnum (sgMaxSuit currentGuess)
-         -  ceiling (fromIntegral (fromEnum (sgMaxSuit currentGuess)) / 2)
-         == sgFound currentGuess
-      then
-        (stack, [])
-      else
-        if not (sgProcessedLeft currentGuess)
-          then
-            let nextGuess = currentGuess
-                  { sgMaxSuit       = toEnum
-                                      . ceiling
-                                      $ fromIntegral
-                                          (fromEnum (sgMaxSuit currentGuess))
-                                      / 2 :: Suit
-                  , sgProcessedLeft = False
-                  , sgCorrects      = Nothing
-                  , sgFound         = 0
-                  }
-                currentGuess' = currentGuess { sgProcessedLeft = True }
-                stack' = stackPush nextGuess $ stackPush currentGuess' stack
-            in  (stack', [])
-          else
-            let
-              nextGuess = currentGuess
-                { sgMinSuit       =
-                  toEnum
-                  $ ceiling
-                      (fromIntegral (fromEnum (sgMaxSuit currentGuess)) / 2)
-                  + 1 :: Suit
-                , sgProcessedLeft = False
-                , sgCorrects      = Nothing
-                , sgFound         = 0
-                }
-              stack' = stackPush nextGuess $ stackPush currentGuess stack
-            in
-              (stack', [])
-
-
-
-
-
-
-
-  -- | processedLeft && processedRight
-  -- -- TODO: Which switch to turn.
-  -- = guessSuits (Maybe.fromJust parentGuess) { sgFound = found }
-  -- | minSuit == maxSuit
-  -- = if Maybe.isNothing parentGuess
-  --   then if Maybe.fromJust corrects == 0
-  --     then SuitGuessed []
-  --     else SuitGuessed [minSuit]
-  --   else
-  --     if Maybe.fromJust (sgCorrects (Maybe.fromJust parentGuess))
-  --        == length found
-  --     then
-  --       guessSuits (Maybe.fromJust parentGuess) { sgFound          = found
-  --                                               , sgProcessedLeft  = True
-  --                                               , sgProcessedRight = True
-  --                                               }
-  --     else
-  --       SuitGuessing
-  --         { sgMinSuit        = toEnum (fromEnum maxSuit + 1) :: Suit
-  --         , sgMaxSuit        = sgMaxSuit $ Maybe.fromJust parentGuess
-  --         , sgCorrects       = Nothing
-  --         , sgParentGuess = Just (Maybe.fromJust parentGuess) { sgProcessedLeft = True
-  --                                                             }
-  --         , sgFound          = found
-  --         , sgProcessedLeft  = False
-  --         , sgProcessedRight = False
-  --         }
-  -- | processedLeft
-  -- = SuitGuessing { sgMinSuit        = toEnum (fromEnum maxSuit + 1) :: Suit
-  --                , sgMaxSuit        = sgMaxSuit $ Maybe.fromJust parentGuess
-  --                , sgCorrects       = Nothing
-  --                , sgParentGuess    = Just currentGuess
-  --                , sgFound          = []
-  --                , sgProcessedLeft  = True
-  --                , sgProcessedRight = False
-  --                }
-  -- | otherwise
-  -- = SuitGuessing
-  --   { sgMinSuit        = minSuit
-  --   , sgMaxSuit = toEnum . ceiling $ fromIntegral (fromEnum maxSuit) / 2 :: Suit
-  --   , sgCorrects       = Nothing
-  --   , sgParentGuess    = Just currentGuess
-  --   , sgFound          = []
-  --   , sgProcessedLeft  = False
-  --   , sgProcessedRight = False
-  --   }
-
-
-
-
-
--- SuitGuessing { sgMinSuit     = toEnum (fromEnum maxSuit + 1) :: Suit
---                         , sgMaxSuit     = sgMaxSuit $ Maybe.fromJust parentGuess
---                         , sgCorrects    = Nothing
---                         , sgParentGuess = parentGuess
---                         , sgFound       = []
---                         }
-
-  --   if Maybe.fromJust corrects > 0
-  --   then SuitGuessed [minSuit]
-  --   case parentGuess of
-  --   Nothing     -> SuitGuessed found
-  --   Just parent -> if
-  --     SuitGuessing
-  --     { sgMinSuit     = toEnum (fromEnum maxSuit + 1) :: Suit
-  --     , sgMaxSuit     = sgMaxSuit parent
-  --     , sgCorrects    = Nothing
-  --     , sgParentGuess = Just parent
-  --     , sgFound       = []
-  --     }
-  -- | otherwise
-  -- = SuitGuessing
-  --   { sgMinSuit     = minSuit
-  --   , sgMaxSuit = toEnum . ceiling $ fromIntegral (fromEnum maxSuit) / 2 :: Suit
-  --   , sgCorrects    = Nothing
-  --   , sgParentGuess = Just currentGuess
-  --   , sgFound       = []
-  --   }
-
-
--- guessSuits correctGuess       = correctGuess
+guessSuits :: Bool -> SuitGuess -> SuitGuess
+guessSuits correct currentGuess@(SuitGuessing suit found)
+  | suit == maxBound = if correct
+    then SuitGuessed (suit : found)
+    else SuitGuessed found
+  | otherwise = if correct
+    then SuitGuessing { sgSuit = succ suit, sgFound = suit : found }
+    else SuitGuessing { sgSuit = succ suit, sgFound = found }
+guessSuits _ correctGuess = correctGuess
 
 
 feedback :: [Card] -> [Card] -> (Int, Int, Int, Int, Int)
@@ -305,9 +164,9 @@ nextGuess a b = a
 testMinRankGuess :: Rank -> (Int, [Rank], Rank)
 testMinRankGuess lowestAnsRank =
   let initialGuess = RankGuessing { rgRank    = toEnum 0
-                                  , rgMaxRank = toEnum 12
+                                  , rgMaxRank = toEnum 8
                                   , rgMinRank = toEnum 0
-                                  , rgStep    = 12
+                                  , rgStep    = 8
                                   }
   in  loop initialGuess lowestAnsRank 0 [] 10
  where
