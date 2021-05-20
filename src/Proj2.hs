@@ -8,6 +8,7 @@ module Proj2
   , testMaxRankGuess
   , guessSuits
   , makeCards
+  , testGame
   )
 where
 
@@ -39,15 +40,18 @@ import qualified Data.Maybe                    as Maybe
 
 
 data GameState
-  = InitialGuess { gsInitialSuit :: Suit
-                 , gsInitialMinRank :: Rank
+  = InitialGuess { gsInitialMinRank :: Rank
                  , gsInitialMaxRank :: Rank
+                 , gsigSuitGuess :: SuitGuess
                  }
   | FindingMax   { gsMaxRankGuess :: RankGuess
                  , gsEstMinRank :: Rank
+                 , gsfmaSuitGuess :: SuitGuess
                  }
-  | FindingMin
-  | FindingSuit
+  | FindingMin   { gsMinRankGuess :: RankGuess
+                 , gsMaxRank :: Rank
+                 , gsfmiSuitGuess :: SuitGuess
+                 }
   | Guessing
   | Done
   deriving (Eq, Show)
@@ -176,17 +180,18 @@ feedback answer guess =
 
 initialGuess :: Int -> ([Card], GameState)
 initialGuess size =
-  let suit    = Club
-      minRank = R6
-      maxRank = R10
-      guess   = take
+  let suitGuess = SuitGuess Club [] False
+      suit      = sgSuit suitGuess
+      minRank   = R6
+      maxRank   = R10
+      guess     = take
         size
         [ Card suit minRank
         , Card suit maxRank
         , Card suit (succ minRank)
         , Card suit (pred maxRank)
         ]
-      gameState = InitialGuess suit minRank maxRank
+      gameState = InitialGuess suit minRank maxRank suitGuess
   in  (guess, gameState)
 
 
@@ -198,9 +203,10 @@ makeCards size rank suit =
 -- (correctCards, lowerRanks, correctRanks, higherRanks, correctSuits)
 nextGuess
   :: ([Card], GameState) -> (Int, Int, Int, Int, Int) -> ([Card], GameState)
-nextGuess (currentGuess, InitialGuess initSuit initMaxRank initMinRank) (_, lowerRanks, _, higherRanks, _)
+nextGuess (currentGuess, InitialGuess initMaxRank initMinRank suitGuess) (_, lowerRanks, _, higherRanks, _)
   = let maxRank      = if higherRanks == 0 then initMaxRank else maxBound
         minRank      = if lowerRanks == 0 then initMinRank else minBound
+        nextSuitGuess =
         maxRankGuess = RankGuess { rgRank     = maxRank
                                  , rgMaxRank  = maxRank
                                  , rgMinRank  = minRank
@@ -208,13 +214,45 @@ nextGuess (currentGuess, InitialGuess initSuit initMaxRank initMinRank) (_, lowe
                                  , rgComplete = False
                                  }
         nextState = FindingMax maxRankGuess minRank
-        guess     = makeCards (length currentGuess) maxRank initSuit
+        guess     = makeCards (length currentGuess) maxRank Club
     in  (guess, nextState)
 
-nextGuess (currentGuess, FindingMax maxRankGuess) (_, _, _, higherRanks, _)
+nextGuess (currentGuess, currentState@(FindingMax maxRankGuess estMinRank)) (_, _, _, higherRanks, _)
   = let nextMaxRankGuess = guessMaxRank higherRanks maxRankGuess
-        nextState =
+        nextState        = if rgComplete nextMaxRankGuess
+          then
+            let maxRank      = rgRank nextMaxRankGuess
+                minRankGuess = RankGuess
+                  { rgRank     = estMinRank
+                  , rgMaxRank  = maxRank
+                  , rgMinRank  = estMinRank
+                  , rgStep     = fromEnum maxRank - fromEnum estMinRank
+                  , rgComplete = False
+                  }
+            in  FindingMin minRankGuess maxRank
+          else currentState { gsMaxRankGuess = nextMaxRankGuess }
+        guess = makeCards
+          (length currentGuess)
+          (if rgComplete nextMaxRankGuess
+            then estMinRank
+            else rgRank nextMaxRankGuess
+          )
+          Club
+    in  (guess, nextState)
 
+nextGuess (currentGuess, currentState@(FindingMin minRankGuess maxRank)) (_, lowerRanks, _, _, _)
+  = let nextMinRankGuess = guessMinRank lowerRanks minRankGuess
+        nextState        = if rgComplete nextMinRankGuess
+          then FindingSuit
+          else currentState { gsMinRankGuess = nextMinRankGuess }
+        guess = makeCards
+          (length currentGuess)
+          (if rgComplete nextMinRankGuess
+            then maxRank
+            else rgRank nextMinRankGuess
+          )
+          Club
+    in  (guess, nextState)
 
 
 
@@ -275,3 +313,25 @@ testMaxRankGuess highestAnsRank =
               cutoff
             RankGuess { rgRank = rank, rgComplete = True } ->
               (guesses + 1, history ++ [rank], rank)
+
+
+testGame :: [Card] -> [([Card], GameState)]
+testGame answer =
+  let initialGameState = initialGuess $ length answer
+      initialFeedback  = feedback answer (fst initialGameState)
+      initialHistory   = [initialGameState]
+  in  loop initialGameState initialHistory 0 15
+ where
+  loop
+    :: ([Card], GameState)
+    -> [([Card], GameState)]
+    -> Int
+    -> Int
+    -> [([Card], GameState)]
+  loop gs history c cutoff =
+    let currentFeedback = feedback answer (fst gs)
+        nextGameState   = nextGuess gs currentFeedback
+        nextHistory     = history ++ [nextGameState]
+    in  if c > cutoff
+          then nextHistory
+          else loop nextGameState nextHistory (c + 1) cutoff
