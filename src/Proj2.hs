@@ -11,6 +11,7 @@ module Proj2
   , testFeedbackRawOutput
   , guessSuits
   , SuitGuess(..)
+  , testGame
   )
 where
 
@@ -79,6 +80,13 @@ guessMinRank lowerRanks currentGuess@(RankGuessing rank maxRank minRank step) =
           }
 guessMinRank _ correctGuess = correctGuess
 
+isRankGuessed :: RankGuess -> Bool
+isRankGuessed RankGuessing{} = False
+isRankGuessed RankGuessed{}  = True
+
+getRank :: RankGuess -> Rank
+getRank RankGuessing { rgRank = rank }  = rank
+getRank RankGuessed { rgAnswer = rank } = rank
 
 guessMaxRank :: Int -> RankGuess -> RankGuess
 guessMaxRank higherRanks currentGuess@(RankGuessing rank maxRank minRank step)
@@ -116,6 +124,13 @@ guessSuits correct currentGuess@(SuitGuessing suit found)
     else SuitGuessing { sgSuit = succ suit, sgFound = found }
 guessSuits _ correctGuess = correctGuess
 
+isSuitGuessed :: SuitGuess -> Bool
+isSuitGuessed SuitGuessing{} = False
+isSuitGuessed SuitGuessed{}  = True
+
+getSuit :: SuitGuess -> Suit
+getSuit (SuitGuessing suit _ ) = suit
+getSuit (SuitGuessed (x : xs)) = x
 
 feedback :: [Card] -> [Card] -> (Int, Int, Int, Int, Int)
 feedback answer guess =
@@ -203,6 +218,31 @@ nextGuess (initialGuess, InitialGuess suitGuess) (corrects, lowerRanks, correctR
         nextGuess = take (length initialGuess - 2) miscGuess ++ baseGuess
     in  (nextGuess, nextGameState)
 
+nextGuess (currentGuess, gs@GameReducing{}) (corrects, lowerRanks, correctRanks, higherRanks, correctSuits)
+  = let minRankGuess = gsMinRankGuess gs
+        maxRankGuess = gsMaxRankGuess gs
+        suitGuess    = gsSuitsGuess gs
+        reduced =
+            isRankGuessed minRankGuess
+              && isRankGuessed maxRankGuess
+              && isSuitGuessed suitGuess
+        nextMinRankGuess = guessMinRank lowerRanks minRankGuess
+        nextMaxRankGuess = guessMaxRank higherRanks maxRankGuess
+        nextSuitGuess    = guessSuits (correctSuits > 0) suitGuess
+        nextGameState    = gs { gsMinRankGuess = nextMinRankGuess
+                              , gsMaxRankGuess = nextMaxRankGuess
+                              , gsSuitsGuess   = nextSuitGuess
+                              }
+        baseGuess =
+            [ Card (getSuit nextSuitGuess) (getRank nextMinRankGuess)
+            , Card (getSuit nextSuitGuess) (getRank nextMaxRankGuess)
+            ]
+        miscGuess =
+            [ Card (getSuit nextSuitGuess) (getRank nextMinRankGuess)
+            , Card (getSuit nextSuitGuess) (getRank nextMaxRankGuess)
+            ]
+        nextGuess = take (length currentGuess - 2) miscGuess ++ baseGuess
+    in  (nextGuess, nextGameState)
 
 -- Unit Tests
 testMinRankGuess :: Rank -> (Int, [Rank], Rank)
@@ -270,3 +310,26 @@ testFeedback =
        , (0, 0, 1, 1, 1)
        , (0, 1, 0, 1, 1)
        ]
+
+
+testGame :: [Card] -> [([Card], GameState)]
+testGame answer =
+  let initialGameState = initialGuess $ length answer
+      initialFeedback  = feedback answer (fst initialGameState)
+      initialHistory   = [initialGameState]
+  in  loop initialGameState initialHistory 0 4
+ where
+  loop
+    :: ([Card], GameState)
+    -> [([Card], GameState)]
+    -> Int
+    -> Int
+    -> [([Card], GameState)]
+  loop gs history c cutoff =
+    let currentFeedback = feedback answer (fst gs)
+        nextGameState   = nextGuess gs currentFeedback
+        nextHistory     = history ++ [nextGameState]
+    in  if c > cutoff
+          then nextHistory
+          else loop nextGameState nextHistory (c + 1) cutoff
+
