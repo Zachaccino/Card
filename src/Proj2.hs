@@ -1,12 +1,13 @@
 module Proj2
-  ( testMinRankGuess
+  ( GameState
+  , SuitGuess(..)
+  , feedback
+  , initialGuess
+  , nextGuess
+  , testMinRankGuess
   , testMaxRankGuess
   , guessSuits
-  , GameState
-  , SuitGuess(..)
-  -- ( feedback
-  -- , initialGuess
-  -- , nextGuess
+  , makeCards
   )
 where
 
@@ -38,8 +39,13 @@ import qualified Data.Maybe                    as Maybe
 
 
 data GameState
-  = InitialGuess
-  | FindingMax
+  = InitialGuess { gsInitialSuit :: Suit
+                 , gsInitialMinRank :: Rank
+                 , gsInitialMaxRank :: Rank
+                 }
+  | FindingMax   { gsMaxRankGuess :: RankGuess
+                 , gsEstMinRank :: Rank
+                 }
   | FindingMin
   | FindingSuit
   | Guessing
@@ -88,6 +94,7 @@ guessMinRank lowerRanks currentGuess@(RankGuess rank maxRank minRank step comple
             , rgStep    = nextStep
             }
 
+
 guessMaxRank :: Int -> RankGuess -> RankGuess
 guessMaxRank higherRanks currentGuess@(RankGuess rank maxRank minRank step completed)
   | completed
@@ -111,6 +118,7 @@ guessMaxRank higherRanks currentGuess@(RankGuess rank maxRank minRank step compl
             , rgMinRank = nextMinRank
             , rgStep    = nextStep
             }
+
 
 guessSuits :: Bool -> SuitGuess -> SuitGuess
 guessSuits correct currentGuess@(SuitGuess suit found completed)
@@ -168,12 +176,45 @@ feedback answer guess =
 
 initialGuess :: Int -> ([Card], GameState)
 initialGuess size =
-  let initialSuit  = Club
-      suitGuess    = SuitGuess { sgSuit = initialSuit, sgFound = [] }
-      baseCards    = [Card initialSuit R6, Card initialSuit R10]
-      miscCards    = [Card initialSuit R7, Card initialSuit R9]
-      initialCards = take (size - 2) miscCards ++ baseCards
-  in  (initialCards, InitialGuess suitGuess)
+  let suit    = Club
+      minRank = R6
+      maxRank = R10
+      guess   = take
+        size
+        [ Card suit minRank
+        , Card suit maxRank
+        , Card suit (succ minRank)
+        , Card suit (pred maxRank)
+        ]
+      gameState = InitialGuess suit minRank maxRank
+  in  (guess, gameState)
+
+
+makeCards :: Int -> Rank -> Suit -> [Card]
+makeCards size rank suit =
+  let combinations = take size (zip [suit ..] (repeat rank))
+  in  map (\(s, r) -> Card s r) combinations
+
+-- (correctCards, lowerRanks, correctRanks, higherRanks, correctSuits)
+nextGuess
+  :: ([Card], GameState) -> (Int, Int, Int, Int, Int) -> ([Card], GameState)
+nextGuess (currentGuess, InitialGuess initSuit initMaxRank initMinRank) (_, lowerRanks, _, higherRanks, _)
+  = let maxRank      = if higherRanks == 0 then initMaxRank else maxBound
+        minRank      = if lowerRanks == 0 then initMinRank else minBound
+        maxRankGuess = RankGuess { rgRank     = maxRank
+                                 , rgMaxRank  = maxRank
+                                 , rgMinRank  = minRank
+                                 , rgStep = fromEnum maxRank - fromEnum minRank
+                                 , rgComplete = False
+                                 }
+        nextState = FindingMax maxRankGuess minRank
+        guess     = makeCards (length currentGuess) maxRank initSuit
+    in  (guess, nextState)
+
+nextGuess (currentGuess, FindingMax maxRankGuess) (_, _, _, higherRanks, _)
+  = let nextMaxRankGuess = guessMaxRank higherRanks maxRankGuess
+        nextState =
+
 
 
 
