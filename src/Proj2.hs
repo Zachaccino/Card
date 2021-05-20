@@ -17,7 +17,17 @@ where
 
 import qualified Card
 import           Card                           ( Card(Card)
-                                                , Rank(Queen, R2, R3, R4, Ace)
+                                                , Rank
+                                                  ( Queen
+                                                  , R2
+                                                  , R3
+                                                  , R4
+                                                  , R6
+                                                  , R7
+                                                  , R9
+                                                  , R10
+                                                  , Ace
+                                                  )
                                                 , Suit
                                                   ( Spade
                                                   , Heart
@@ -31,8 +41,7 @@ import qualified Data.List                     as List
 import qualified Data.Maybe                    as Maybe
 
 data GameState
-  = InitialGuess { gsInitialGuess :: [Card]
-                 , gsCardCount :: Int
+  = InitialGuess { gsSuitsGuess :: SuitGuess
                  }
   | GameReducing { gsMinRankGuess :: RankGuess
                  , gsMaxRankGuess :: RankGuess
@@ -40,7 +49,7 @@ data GameState
                  }
   | GameGuessing
   | GameGuessed
-
+  deriving (Eq, Show)
 
 data RankGuess
   = RankGuessing { rgRank :: Rank
@@ -152,21 +161,56 @@ feedback answer guess =
 
 
 initialGuess :: Int -> ([Card], GameState)
-initialGuess size = ([], GameGuessed)
+initialGuess size =
+  let initialSuit  = Club
+      suitGuess    = SuitGuessing { sgSuit = initialSuit, sgFound = [] }
+      baseCards    = [Card initialSuit R6, Card initialSuit R10]
+      miscCards    = [Card initialSuit R7, Card initialSuit R9]
+      initialCards = take (size - 2) miscCards ++ baseCards
+  in  (initialCards, InitialGuess suitGuess)
+
 
 nextGuess
   :: ([Card], GameState) -> (Int, Int, Int, Int, Int) -> ([Card], GameState)
-nextGuess a b = a
-
+nextGuess (initialGuess, InitialGuess suitGuess) (corrects, lowerRanks, correctRanks, higherRanks, correctSuits)
+  = let initMaxRank  = if higherRanks == 0 then R10 else maxBound
+        initMinRank  = if lowerRanks == 0 then R6 else minBound
+        minRankGuess = RankGuessing
+          { rgRank    = initMinRank
+          , rgMaxRank = initMaxRank
+          , rgMinRank = initMinRank
+          , rgStep    = fromEnum initMaxRank - fromEnum initMinRank
+          }
+        maxRankGuess = RankGuessing
+          { rgRank    = initMaxRank
+          , rgMaxRank = initMaxRank
+          , rgMinRank = initMinRank
+          , rgStep    = fromEnum initMaxRank - fromEnum initMinRank
+          }
+        nextSuitGuess = guessSuits (correctSuits > 0) suitGuess
+        nextGameState = GameReducing { gsMinRankGuess = minRankGuess
+                                     , gsMaxRankGuess = maxRankGuess
+                                     , gsSuitsGuess   = nextSuitGuess
+                                     }
+        baseGuess =
+            [ Card (sgSuit nextSuitGuess) initMinRank
+            , Card (sgSuit nextSuitGuess) initMaxRank
+            ]
+        miscGuess =
+            [ Card (sgSuit nextSuitGuess) (succ initMinRank)
+            , Card (sgSuit nextSuitGuess) (pred initMaxRank)
+            ]
+        nextGuess = take (length initialGuess - 2) miscGuess ++ baseGuess
+    in  (nextGuess, nextGameState)
 
 
 -- Unit Tests
 testMinRankGuess :: Rank -> (Int, [Rank], Rank)
 testMinRankGuess lowestAnsRank =
-  let initialGuess = RankGuessing { rgRank    = toEnum 0
+  let initialGuess = RankGuessing { rgRank    = toEnum 4
                                   , rgMaxRank = toEnum 8
-                                  , rgMinRank = toEnum 0
-                                  , rgStep    = 8
+                                  , rgMinRank = toEnum 4
+                                  , rgStep    = 4
                                   }
   in  loop initialGuess lowestAnsRank 0 [] 10
  where
