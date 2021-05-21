@@ -1,6 +1,6 @@
 {-# LANGUAGE BlockArguments #-}
 -- Replace this comment with your opening documentation.  Leave this module declaration as is:
-module Proj2
+module Backup
   ( feedback
   , initialGuess
   , nextGuess

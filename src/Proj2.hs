@@ -47,15 +47,19 @@ data GameState
   | FindingMax   { gsMaxRankGuess :: RankGuess
                  , gsEstMinRank :: Rank
                  , gsSuitGuess :: SuitGuess
+                 , gsHistory :: [(Card, Int)]
                  }
   | FindingMin   { gsMinRankGuess :: RankGuess
                  , gsMaxRank :: Rank
                  , gsSuitGuess :: SuitGuess
+                 , gsHistory :: [(Card, Int)]
                  }
   | GuessingMax  { gsMinRank :: Rank
                  , gsMaxRank :: Rank
+                 , gsPossible :: [Card]
                  , gsSuitGuess :: SuitGuess
                  , gsResult :: [Card]
+                 , gsHistory :: [(Card, Int)]
                  }
   | GuessingMin  { gsMinRank :: Rank
                  , gsMaxRank :: Rank
@@ -77,7 +81,7 @@ data RankGuess
 
 data SuitGuess
   = SuitGuess { sgSuit :: Suit
-              , sgFound :: [Suit]
+              , sgFound :: [(Suit, Int)]
               , sgComplete :: Bool
               }
     deriving(Eq, Show)
@@ -134,13 +138,13 @@ guessMaxRank higherRanks currentGuess@(RankGuess rank maxRank minRank step compl
 
 
 guessSuits :: Int -> SuitGuess -> SuitGuess
-guessSuits correct currentGuess@(SuitGuess suit found completed)
+guessSuits count currentGuess@(SuitGuess suit found completed)
   | completed = currentGuess
-  | suit == maxBound = if correct > 0
-    then currentGuess { sgFound = suit : found, sgComplete = True }
+  | suit == maxBound = if count > 0
+    then currentGuess { sgFound = (suit, count) : found, sgComplete = True }
     else currentGuess { sgFound = found, sgComplete = True }
-  | otherwise = if correct > 0
-    then currentGuess { sgSuit = succ suit, sgFound = suit : found }
+  | otherwise = if count > 0
+    then currentGuess { sgSuit = succ suit, sgFound = (suit, count) : found }
     else currentGuess { sgSuit = succ suit, sgFound = found }
 
 
@@ -204,10 +208,29 @@ initialGuess size =
   in  (guess, gameState)
 
 
-makeCards :: Int -> Rank -> Suit -> [Card]
-makeCards size rank suit =
-  let combinations = take size (zip [suit ..] (repeat rank))
+makeSuits :: Int -> SuitGuess -> [Suit]
+makeSuits size (SuitGuess suit found _) = 
+  take size $ foldl (\acc (s, c) -> acc ++ replicate c s) [] found ++ repeat suit
+
+countSuits :: SuitGuess -> Int
+countSuits (SuitGuess _ found _) = foldl (\acc (_, c) -> acc + c) 0 found
+
+
+makeCards :: Int -> Rank -> [Suit] -> [Card]
+makeCards size rank suits =
+  let combinations = take size (zip suits (repeat rank))
   in  map (\(s, r) -> Card s r) combinations
+
+toHistory :: [Card] -> Int -> [(Card, Int)]
+toHistory guess corrects = map (\c -> (c, corrects)) guess
+
+makeFocusGuess :: Int -> [Card] -> [(Card, Int)]  -> [Card]
+makeFocusGuess size possible history =
+  let firstChoice = head possible
+      wrongChoices = map fst . take (size - 1) $ filter (\(_, c) -> c == 0) history
+  in firstChoice : wrongChoices
+
+
 
 -- (correctCards, lowerRanks, correctRanks, higherRanks, correctSuits)
 nextGuess
@@ -215,7 +238,7 @@ nextGuess
 nextGuess (currentGuess, InitialGuess initMaxRank initMinRank suitGuess) (_, lowerRanks, _, higherRanks, correctSuits)
   = let maxRank       = if higherRanks == 0 then initMaxRank else maxBound
         minRank       = if lowerRanks == 0 then initMinRank else minBound
-        nextSuitGuess = guessSuits correctSuits suitGuess
+        nextSuitGuess = guessSuits (correctSuits - countSuits suitGuess) suitGuess
         suit          = sgSuit nextSuitGuess
         maxRankGuess  = RankGuess { rgRank     = maxRank
                                   , rgMaxRank  = maxRank
@@ -223,14 +246,15 @@ nextGuess (currentGuess, InitialGuess initMaxRank initMinRank suitGuess) (_, low
                                   , rgStep = fromEnum maxRank - fromEnum minRank
                                   , rgComplete = False
                                   }
-        nextState = FindingMax maxRankGuess minRank nextSuitGuess
-        guess     = makeCards (length currentGuess) maxRank suit
+        nextState = FindingMax maxRankGuess minRank nextSuitGuess []
+        guess     = makeCards (length currentGuess) maxRank (makeSuits (length currentGuess) nextSuitGuess)
     in  (guess, nextState)
 
-nextGuess (currentGuess, currentState@(FindingMax maxRankGuess estMinRank suitGuess)) (_, _, _, higherRanks, correctSuits)
+nextGuess (currentGuess, currentState@(FindingMax maxRankGuess estMinRank suitGuess history)) (correctCards, _, _, higherRanks, correctSuits)
   = let nextMaxRankGuess = guessMaxRank higherRanks maxRankGuess
-        nextSuitGuess    = guessSuits correctSuits suitGuess
+        nextSuitGuess    = guessSuits (correctSuits - countSuits suitGuess) suitGuess
         suit             = sgSuit nextSuitGuess
+        nextHistory      = toHistory currentGuess correctCards ++ history
         nextState        = if rgComplete nextMaxRankGuess
           then
             let maxRank      = rgRank nextMaxRankGuess
@@ -241,38 +265,40 @@ nextGuess (currentGuess, currentState@(FindingMax maxRankGuess estMinRank suitGu
                   , rgStep     = fromEnum maxRank - fromEnum estMinRank
                   , rgComplete = False
                   }
-            in  FindingMin minRankGuess maxRank nextSuitGuess
-          else currentState { gsMaxRankGuess = nextMaxRankGuess }
+                wrongRanks = if maxRank /= maxBound then [(succ maxRank)..maxBound] else []
+                presumeHistory = map (\(s, r) -> (Card s r, 0)) $ [ (s, r) | s<-[minBound ..], r<-wrongRanks ]
+            in  FindingMin minRankGuess maxRank nextSuitGuess (nextHistory ++ presumeHistory)
+          else currentState { gsMaxRankGuess = nextMaxRankGuess, gsSuitGuess = nextSuitGuess, gsHistory = nextHistory }
         guess = makeCards
           (length currentGuess)
           (if rgComplete nextMaxRankGuess
             then estMinRank
             else rgRank nextMaxRankGuess
           )
-          suit
+          (makeSuits (length currentGuess) nextSuitGuess)
     in  (guess, nextState)
 
-nextGuess (currentGuess, currentState@(FindingMin minRankGuess maxRank suitGuess)) (_, lowerRanks, _, _, correctSuits)
+nextGuess (currentGuess, currentState@(FindingMin minRankGuess maxRank suitGuess history)) (correctCards, lowerRanks, _, _, correctSuits)
   = let nextMinRankGuess = guessMinRank lowerRanks minRankGuess
-        nextSuitGuess    = guessSuits correctSuits suitGuess
+        nextSuitGuess    = guessSuits (correctSuits - countSuits suitGuess) suitGuess
         suit             = sgSuit nextSuitGuess
+        nextHistory       = toHistory currentGuess correctCards ++ history
         nextState        = if rgComplete nextMinRankGuess
           then
             let minRank = rgRank nextMinRankGuess
-            in  GuessingMax minRank maxRank nextSuitGuess []
-          else currentState { gsMinRankGuess = nextMinRankGuess }
-        guess = makeCards
-          (length currentGuess)
-          (if rgComplete nextMinRankGuess
-            then
-            else rgRank nextMinRankGuess
-          )
-          suit
+                possibleCards = map ((`Card` maxRank) . fst) (sgFound nextSuitGuess)
+                wrongRanks = if minRank /= minBound then [(pred minRank)..minBound] else []
+                presumeHistory = map (\(s, r) -> (Card s r, 0)) $ [ (s, r) | s<-[minBound ..], r<-wrongRanks ]
+            in  GuessingMax minRank maxRank possibleCards nextSuitGuess [] (nextHistory ++ presumeHistory)
+          else currentState { gsMinRankGuess = nextMinRankGuess, gsSuitGuess = nextSuitGuess, gsHistory = nextHistory }
+        guess = case nextState of
+          GuessingMax _ _ pcs _ _ h  -> makeFocusGuess (length currentGuess) pcs h
+          _ -> makeCards (length currentGuess) (rgRank nextMinRankGuess) (makeSuits (length currentGuess) nextSuitGuess)
     in  (guess, nextState)
 
 
-
-
+-- Count Updated
+-- Suit Generate
 
 
 
