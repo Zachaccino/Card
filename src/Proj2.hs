@@ -71,7 +71,7 @@ data GameState
                  , gsResult :: [Card]
                  , gsHistory :: [(Card, Int)]
                  }
-  | Done
+  | Done         { gsResult :: [Card] }
   deriving (Eq, Show)
 
 
@@ -238,7 +238,7 @@ makeFocusGuess size targetSuit rank history =
 -- (correctCards, lowerRanks, correctRanks, higherRanks, correctSuits)
 nextGuess
   :: ([Card], GameState) -> (Int, Int, Int, Int, Int) -> ([Card], GameState)
-nextGuess (currentGuess, InitialGuess initMaxRank initMinRank) (_, lowerRanks, _, higherRanks, correctSuits)
+nextGuess (currentGuess, InitialGuess initMinRank initMaxRank) (_, lowerRanks, _, higherRanks, correctSuits)
   = let maxRank       = if higherRanks == 0 then initMaxRank else maxBound
         minRank       = if lowerRanks == 0 then initMinRank else minBound
         -- nextSuitGuess = guessSuits correctSuits suitGuess
@@ -312,14 +312,14 @@ nextGuess (currentGuess, currentState@(GuessingMin suit minRank maxRank result h
   = let nextResult = if correctCards > 0 then Card suit minRank : result else result
         nextHistory = toHistory currentGuess correctCards ++ history
         nextState = if suit == maxBound
-          then Done
+          then Done nextResult
           else currentState { gsSuit = succ suit, gsResult = nextResult, gsHistory = nextHistory }
         guess = case nextState of
-          Done -> currentGuess
-          GuessingMax suit _ _ _ hist -> makeFocusGuess (length currentGuess) suit minRank hist
+          Done found -> found
+          GuessingMin suit _ _ _ hist -> makeFocusGuess (length currentGuess) suit minRank hist
     in (guess, nextState)
 
-nextGuess (currentGuess, currentState@Done) _ =  (currentGuess, currentState)
+nextGuess (currentGuess, currentState@Done {}) _ =  (currentGuess, currentState)
 
 
 
@@ -378,23 +378,26 @@ testMaxRankGuess highestAnsRank =
               (guesses + 1, history ++ [rank], rank)
 
 
-testGame :: [Card] -> [([Card], GameState)]
+testGame :: [Card] -> [(([Card], GameState),Int)]
 testGame answer =
   let initialGameState = initialGuess $ length answer
       initialFeedback  = feedback answer (fst initialGameState)
-      initialHistory   = [initialGameState]
-  in  loop initialGameState initialHistory 0 15
+      initialHistory   = [(initialGameState, 1)]
+  in  loop initialGameState initialHistory 1 100
  where
   loop
     :: ([Card], GameState)
-    -> [([Card], GameState)]
+    -> [(([Card], GameState),Int)]
     -> Int
     -> Int
-    -> [([Card], GameState)]
+    -> [(([Card], GameState),Int)]
   loop gs history c cutoff =
     let currentFeedback = feedback answer (fst gs)
         nextGameState   = nextGuess gs currentFeedback
-        nextHistory     = history ++ [nextGameState]
-    in  if c > cutoff
+        nextHistory     = history ++ [(nextGameState, c)]
+        done = case nextGameState of 
+          (_, Done {}) -> True 
+          _ -> False 
+    in  if c > cutoff || done
           then nextHistory
           else loop nextGameState nextHistory (c + 1) cutoff
