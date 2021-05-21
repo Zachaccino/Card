@@ -61,12 +61,15 @@ data GameState
                 --  , gsSuitGuess :: SuitGuess
                  , gsResult :: [Card]
                  , gsHistory :: [(Card, Int)]
-            
+
                  }
-  | GuessingMin  { gsMinRank :: Rank
+  | GuessingMin  { gsSuit :: Suit
+                 , gsMinRank :: Rank
                  , gsMaxRank :: Rank
+                --  , gsPossible :: [Card]
                 --  , gsSuitGuess :: SuitGuess
                  , gsResult :: [Card]
+                 , gsHistory :: [(Card, Int)]
                  }
   | Done
   deriving (Eq, Show)
@@ -247,10 +250,10 @@ nextGuess (currentGuess, InitialGuess initMaxRank initMinRank) (_, lowerRanks, _
                                   , rgComplete = False
                                   }
         nextState = FindingMax maxRankGuess minRank []
-        guess     = makeCards (length currentGuess) maxRank 
+        guess     = makeCards (length currentGuess) maxRank
     in  (guess, nextState)
 
-nextGuess (currentGuess, currentState@(FindingMax maxRankGuess estMinRank history)) (correctCards, _, _, higherRanks, correctSuits)
+nextGuess (currentGuess, currentState@(FindingMax maxRankGuess estMinRank history)) (correctCards, _, _, higherRanks, _)
   = let nextMaxRankGuess = guessMaxRank higherRanks maxRankGuess
         -- nextSuitGuess    = guessSuits (correctSuits - countSuits suitGuess) suitGuess
         -- suit             = sgSuit nextSuitGuess
@@ -277,7 +280,7 @@ nextGuess (currentGuess, currentState@(FindingMax maxRankGuess estMinRank histor
           )
     in  (guess, nextState)
 
-nextGuess (currentGuess, currentState@(FindingMin minRankGuess maxRank history)) (correctCards, lowerRanks, _, _, correctSuits)
+nextGuess (currentGuess, currentState@(FindingMin minRankGuess maxRank history)) (correctCards, lowerRanks, _, _, _)
   = let nextMinRankGuess = guessMinRank lowerRanks minRankGuess
         -- nextSuitGuess    = guessSuits (correctSuits - countSuits suitGuess) suitGuess
         -- suit             = sgSuit nextSuitGuess
@@ -290,11 +293,33 @@ nextGuess (currentGuess, currentState@(FindingMin minRankGuess maxRank history))
             in  GuessingMax Club minRank maxRank [] (nextHistory ++ presumeHistory)
           else currentState { gsMinRankGuess = nextMinRankGuess, gsHistory = nextHistory }
         guess = case nextState of
-          GuessingMax suit _ _ _ hist  -> makeFocusGuess (length currentGuess) suit maxRank hist
+          GuessingMax suit _ _ _ hist -> makeFocusGuess (length currentGuess) suit maxRank hist
           _ -> makeCards (length currentGuess) (rgRank nextMinRankGuess)
     in  (guess, nextState)
 
-nextGuess (currentGuess, currentState@(GuessingMax suit minRank maxRank result history)) (correctCards, lowerRanks, _, _, correctSuits)
+nextGuess (currentGuess, currentState@(GuessingMax suit minRank maxRank result history)) (correctCards, _, _, _, _)
+  = let nextResult = if correctCards > 0 then Card suit maxRank : result else result
+        nextHistory = toHistory currentGuess correctCards ++ history
+        nextState = if suit == maxBound
+          then GuessingMin Club minRank maxRank nextResult nextHistory
+          else currentState { gsSuit = succ suit, gsResult = nextResult, gsHistory = nextHistory }
+        guess = case nextState of
+          GuessingMin suit _ _ _ hist -> makeFocusGuess (length currentGuess) suit minRank hist
+          GuessingMax suit _ _ _ hist -> makeFocusGuess (length currentGuess) suit maxRank hist
+    in (guess, nextState)
+
+nextGuess (currentGuess, currentState@(GuessingMin suit minRank maxRank result history)) (correctCards, _, _, _, _)
+  = let nextResult = if correctCards > 0 then Card suit minRank : result else result
+        nextHistory = toHistory currentGuess correctCards ++ history
+        nextState = if suit == maxBound
+          then Done
+          else currentState { gsSuit = succ suit, gsResult = nextResult, gsHistory = nextHistory }
+        guess = case nextState of
+          Done -> currentGuess
+          GuessingMax suit _ _ _ hist -> makeFocusGuess (length currentGuess) suit minRank hist
+    in (guess, nextState)
+
+nextGuess (currentGuess, currentState@Done) _ =  (currentGuess, currentState)
 
 
 
