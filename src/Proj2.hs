@@ -4,6 +4,7 @@ module Proj2
   , initialGuess
   , nextGuess
   , testGame
+  , testMaxRankGuess
   )
 where
 
@@ -219,7 +220,7 @@ nextGuess (currentGuess, InitialGuess initMinRank initMaxRank) (_, lowerRanks, _
     in  (guess, nextState)
 
 nextGuess (currentGuess, currentState@(FindingMax maxRankGuess estMinRank history level result)) (correctCards, _, _, higherRanks, _)
-  = let nextMaxRankGuess = guessMaxRank higherRanks maxRankGuess
+  = let nextMaxRankGuess = guessMaxRank (higherRanks - level) maxRankGuess
         nextHistory      = toHistory currentGuess correctCards ++ history
         nextState        = if rgComplete nextMaxRankGuess
           then
@@ -244,7 +245,7 @@ nextGuess (currentGuess, currentState@(FindingMax maxRankGuess estMinRank histor
     in  (guess, nextState)
 
 nextGuess (currentGuess, currentState@(FindingMin minRankGuess maxRank history level result)) (correctCards, lowerRanks, _, _, _)
-  = let nextMinRankGuess = guessMinRank lowerRanks minRankGuess
+  = let nextMinRankGuess = guessMinRank (lowerRanks - level) minRankGuess
         nextHistory       = toHistory currentGuess correctCards ++ history
         nextState        = if rgComplete nextMinRankGuess
           then
@@ -282,11 +283,12 @@ nextGuess (currentGuess, currentState@(GuessingMin suit minRank maxRank result h
                                                               , rgStep = fromEnum (pred maxRank) - fromEnum (succ minRank)
                                                               , rgComplete = False
                                                               }
-                                in FindingMax maxRankGuess minRank nextHistory level nextResult
+                                in FindingMax maxRankGuess (succ minRank) nextHistory (level + 1) nextResult
           | otherwise = currentState { gsSuit = succ suit, gsResult = nextResult, gsHistory = nextHistory }
         guess = case nextState of
           Done found -> found
           GuessingMin suit _ _ _ hist _ -> makeFocusGuess (length currentGuess) suit minRank hist
+          FindingMax maxRankGuess _ _ _ _  -> makeCards (length currentGuess) (rgRank maxRankGuess)
     in (guess, nextState)
 
 nextGuess (currentGuess, currentState@Done {}) _ =  (currentGuess, currentState)
@@ -296,8 +298,8 @@ nextGuess (currentGuess, currentState@Done {}) _ =  (currentGuess, currentState)
 -- Unit Tests
 testMinRankGuess :: Rank -> (Int, [Rank], Rank)
 testMinRankGuess lowestAnsRank =
-  let initialGuess = RankGuess { rgRank     = toEnum 0
-                               , rgMaxRank  = toEnum 12
+  let initialGuess = RankGuess { rgRank     = toEnum 2
+                               , rgMaxRank  = toEnum 10
                                , rgMinRank  = toEnum 0
                                , rgStep     = 12
                                , rgComplete = False
@@ -306,7 +308,7 @@ testMinRankGuess lowestAnsRank =
  where
   loop :: RankGuess -> Rank -> Int -> [Rank] -> Int -> (Int, [Rank], Rank)
   loop prevGuess lowestAnsRank guesses history cutoff =
-    let feedback  = if lowestAnsRank < rgRank prevGuess then 1 else 0
+    let feedback  = if lowestAnsRank < rgRank prevGuess then 2 else 0
         nextGuess = guessMinRank feedback prevGuess
     in  if guesses >= cutoff
           then (guesses, history, R2)
@@ -323,10 +325,10 @@ testMinRankGuess lowestAnsRank =
 
 testMaxRankGuess :: Rank -> (Int, [Rank], Rank)
 testMaxRankGuess highestAnsRank =
-  let initialGuess = RankGuess { rgRank     = toEnum 12
-                               , rgMaxRank  = toEnum 12
-                               , rgMinRank  = toEnum 0
-                               , rgStep     = 12
+  let initialGuess = RankGuess { rgRank     = toEnum 9
+                               , rgMaxRank  = toEnum 9
+                               , rgMinRank  = toEnum 3
+                               , rgStep     = 6
                                , rgComplete = False
                                }
   in  loop initialGuess highestAnsRank 0 [] 10
