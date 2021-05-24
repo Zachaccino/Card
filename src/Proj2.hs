@@ -1,10 +1,26 @@
+-- | Author: Jingyuan Tu
+--   Student ID: 1232404
+--  
+--   This module applies an iterative reduction and guessing strategy to 
+--   guess the cards drawn by the opponent from a deck of playing cards
+--   without jokers.
+--  
+--   There exists a set of cards drawn by the opponent from a deck of playing
+--   cards without jokers. The goal is to correctly guess the opponent's cards
+--   using the least number of guesses possible. Feedbacks are given indicating
+--   if there are larger, lower, or correct cards in the answer. The initial guess 
+--   eliminates a large number of ranks by guessing cards with R6 and R10 ranks. 
+--   Subsequent guesses start within the remaining set of ranks, and narrow down the
+--   bounds using a binary search approach. Once the bounds are found, the program
+--   deduce the cards by trying each suit with the rank at bound. This process is 
+--   repeated until all cards are guessed. 
+
+
 module Proj2
   ( GameState
   , feedback
   , initialGuess
   , nextGuess
-  , testGame
-  , testMaxRankGuess
   )
 where
 
@@ -35,6 +51,10 @@ import qualified Data.List                     as List
 import qualified Data.Maybe                    as Maybe
 
 
+-- | Keeping track of the overall guessing progress using a state machine. 
+--   
+--   The state is initiated by the initialGuess, and the subsequent state 
+--   transitions are computed by the nextGuess.
 data GameState
   = InitialGuess { gsInitialMinRank :: Rank
                  , gsInitialMaxRank :: Rank
@@ -70,6 +90,7 @@ data GameState
   deriving (Eq, Show)
 
 
+-- | Keeping track of the progress of guessing the minimum or maximum rank.
 data RankGuess
   = RankGuess { rgRank :: Rank
               , rgMaxRank :: Rank
@@ -80,6 +101,14 @@ data RankGuess
   deriving (Eq, Show)
 
 
+-- | Given the number of cards in the answer that have lower ranks than
+--   the lowest ranked cards in the current guess. Produce the next guess
+--   that may or may not be the minimum rank. 
+--   
+--   This function locates the minimum rank by doing a binary search. 
+-- 
+--   Once the search is completed, the completion status in the next guess
+--   is set to True, and subsequent guess would not change the guess outcome.
 guessMinRank :: Int -> RankGuess -> RankGuess
 guessMinRank lowerRanks currentGuess@(RankGuess rank maxRank minRank step completed)
   | completed
@@ -105,6 +134,14 @@ guessMinRank lowerRanks currentGuess@(RankGuess rank maxRank minRank step comple
             }
 
 
+-- | Given the number of cards in the answer that have higher ranks than
+--   the highest ranked cards in the current guess. Produce the next guess
+--   that may or may not be the maximum rank. 
+--   
+--   This function locates the maximum rank by doing a binary search. 
+-- 
+--   Once the search is completed, the completion status in the next guess
+--   is set to True, and subsequent guess would not change the guess outcome.
 guessMaxRank :: Int -> RankGuess -> RankGuess
 guessMaxRank higherRanks currentGuess@(RankGuess rank maxRank minRank step completed)
   | completed
@@ -130,6 +167,10 @@ guessMaxRank higherRanks currentGuess@(RankGuess rank maxRank minRank step compl
             }
 
 
+-- | Given the answer cards and guess cards, returns the a feedback tutple
+--   containing the number of correct cards, number of cards with lower ranks,
+--   number of cards share the same rank, number of cards with higher ranks,
+--   and number of cards share the same suit.
 feedback :: [Card] -> [Card] -> (Int, Int, Int, Int, Int)
 feedback answer guess =
   let
@@ -164,6 +205,8 @@ feedback answer guess =
     , matchingSuitCount
     )
  where
+  -- The size of the intersection of two lists. Assuming both lists
+  -- are sorted ahead of time. 
   matchCount :: (Ord a, Eq a) => [a] -> [a] -> Int
   matchCount [] _  = 0
   matchCount _  [] = 0
@@ -172,7 +215,8 @@ feedback answer guess =
                                | otherwise = matchCount xs (y : ys)
 
 
-
+-- | Given the number of cards in the answer cards. Produce an initial guess 
+--   and game state such that subsequent guesses can be computed.
 initialGuess :: Int -> ([Card], GameState)
 initialGuess size =
   let suit      = Club
@@ -188,14 +232,26 @@ initialGuess size =
       gameState = InitialGuess minRank maxRank
   in  (guess, gameState)
 
+
+-- | Given the number of cards and the desired rank, make a list of
+--   valid and unique cards with the same rank but with different suit.
 makeCards :: Int -> Rank  -> [Card]
 makeCards size rank =
   let combinations = take size (zip [Club ..] (repeat rank))
   in  map (\(s, r) -> Card s r) combinations
 
+
+-- | Given the guess cards and the number of correct cards, convert
+--   them into the guess histroy, where each card in the guess is associated 
+--   with the number of correct cards. 
 toHistory :: [Card] -> Int -> [(Card, Int)]
 toHistory guess corrects = map (\c -> (c, corrects)) guess
 
+
+-- | Given the number of cards, the desired suit and rank, and guess history.
+--   Make a list of cards where only the card with given suit and rank can 
+--   be the correct card, and all other cards must be incorrect as indicated by
+--   the history.
 makeFocusGuess :: Int -> Suit -> Rank -> [(Card, Int)]-> [Card]
 makeFocusGuess size targetSuit rank history =
   let wrongChoices = map fst . take (size - 1) $ filter (\(Card s _, c) -> c == 0 && s /= targetSuit) history
@@ -203,9 +259,12 @@ makeFocusGuess size targetSuit rank history =
 
 
 
--- (correctCards, lowerRanks, correctRanks, higherRanks, correctSuits)
+-- | Given the current guess, game state, and feedback, generate another guess and game state 
+--   that is closer to guessing the right cards. 
 nextGuess
   :: ([Card], GameState) -> (Int, Int, Int, Int, Int) -> ([Card], GameState)
+
+-- | Determining the starting point for binary searching max and min rank, and preparing for guessing the max rank.
 nextGuess (currentGuess, InitialGuess initMinRank initMaxRank) (_, lowerRanks, _, higherRanks, correctSuits)
   = let maxRank       = if higherRanks == 0 then initMaxRank else maxBound
         minRank       = if lowerRanks == 0 then initMinRank else minBound
@@ -219,6 +278,10 @@ nextGuess (currentGuess, InitialGuess initMinRank initMaxRank) (_, lowerRanks, _
         guess     = makeCards (length currentGuess) maxRank
     in  (guess, nextState)
 
+-- | Narrowing down the max rank by making a guess that is guided by the number of higher rank cards in the feedback.
+--   Guess higher rank if the answer contains higher rank cards and vice versa.
+--
+--   Once max rank is found, it prepares to guess the min rank with the knowledge of the known max bound.
 nextGuess (currentGuess, currentState@(FindingMax maxRankGuess estMinRank history level result)) (correctCards, _, _, higherRanks, _)
   = let nextMaxRankGuess = guessMaxRank (higherRanks - level) maxRankGuess
         nextHistory      = toHistory currentGuess correctCards ++ history
@@ -233,6 +296,7 @@ nextGuess (currentGuess, currentState@(FindingMax maxRankGuess estMinRank histor
                   , rgComplete = False
                   }
                 wrongRanks = if maxRank /= maxBound then [(succ maxRank)..maxBound] else []
+                -- Once we found the max bound, we can assume ranks above max bound are incorrect. 
                 presumeHistory = map (\(s, r) -> (Card s r, 0)) $ [ (s, r) | s<-[minBound ..], r<-wrongRanks ]
             in  FindingMin minRankGuess maxRank (nextHistory ++ presumeHistory) level result
           else currentState { gsMaxRankGuess = nextMaxRankGuess, gsHistory = nextHistory }
@@ -244,6 +308,11 @@ nextGuess (currentGuess, currentState@(FindingMax maxRankGuess estMinRank histor
           )
     in  (guess, nextState)
 
+
+-- | Narrowing down the min rank by making a guess that is guided by the number of lower rank cards in the feedback.
+--   Guess lower rank if the answer contains lower rank cards and vice versa.
+--
+--   Once min rank is found, it prepares to guess the suit of the highest ranked card in the answer.
 nextGuess (currentGuess, currentState@(FindingMin minRankGuess maxRank history level result)) (correctCards, lowerRanks, _, _, _)
   = let nextMinRankGuess = guessMinRank (lowerRanks - level) minRankGuess
         nextHistory       = toHistory currentGuess correctCards ++ history
@@ -251,7 +320,9 @@ nextGuess (currentGuess, currentState@(FindingMin minRankGuess maxRank history l
           then
             let minRank = rgRank nextMinRankGuess
                 wrongRanks = if minRank /= minBound then [(pred minRank)..minBound] else []
+                -- Once we found the min bound, we can assume ranks below min bound are incorrect. 
                 presumeHistory = map (\(s, r) -> (Card s r, 0)) $ [ (s, r) | s<-[minBound ..], r<-wrongRanks ]
+                -- Start guessing the suit from Club to Diamon in order.
             in  GuessingMax Club minRank maxRank result (nextHistory ++ presumeHistory) level 
           else currentState { gsMinRankGuess = nextMinRankGuess, gsHistory = nextHistory }
         guess = case nextState of
@@ -259,6 +330,10 @@ nextGuess (currentGuess, currentState@(FindingMin minRankGuess maxRank history l
           _ -> makeCards (length currentGuess) (rgRank nextMinRankGuess)
     in  (guess, nextState)
 
+-- | Guess each suit with the max rank and keep them in the result if it is one of the answer card. 
+--   Once all suits had been teseted with the max rank, do the same for min rank.
+--
+--   If all cards had been found during guessing,  the guessing is set to be done. 
 nextGuess (currentGuess, currentState@(GuessingMax suit minRank maxRank result history level)) (correctCards, _, _, _, _)
   = let nextResult = if correctCards > 0 then Card suit maxRank : result else result
         nextHistory = toHistory currentGuess correctCards ++ history
@@ -272,6 +347,9 @@ nextGuess (currentGuess, currentState@(GuessingMax suit minRank maxRank result h
           Done found -> found
     in (guess, nextState)
 
+-- | Guess each suit with the min rank and keep them in the result if it is one of the answer card. 
+--   Once all suits had been teseted with the min rank, the guessing stops if all results had been found,
+---  otherwise, it is back to finding the max bound but excluding the cards that we have found. 
 nextGuess (currentGuess, currentState@(GuessingMin suit minRank maxRank result history level)) (correctCards, _, _, _, _)
   = let nextResult = if correctCards > 0 then Card suit minRank : result else result
         nextHistory = toHistory currentGuess correctCards ++ history
@@ -291,85 +369,6 @@ nextGuess (currentGuess, currentState@(GuessingMin suit minRank maxRank result h
           FindingMax maxRankGuess _ _ _ _  -> makeCards (length currentGuess) (rgRank maxRankGuess)
     in (guess, nextState)
 
+
+-- | Once the guess is final, it would not change.
 nextGuess (currentGuess, currentState@Done {}) _ =  (currentGuess, currentState)
-
-
-
--- Unit Tests
-testMinRankGuess :: Rank -> (Int, [Rank], Rank)
-testMinRankGuess lowestAnsRank =
-  let initialGuess = RankGuess { rgRank     = toEnum 2
-                               , rgMaxRank  = toEnum 10
-                               , rgMinRank  = toEnum 0
-                               , rgStep     = 12
-                               , rgComplete = False
-                               }
-  in  loop initialGuess lowestAnsRank 0 [] 10
- where
-  loop :: RankGuess -> Rank -> Int -> [Rank] -> Int -> (Int, [Rank], Rank)
-  loop prevGuess lowestAnsRank guesses history cutoff =
-    let feedback  = if lowestAnsRank < rgRank prevGuess then 2 else 0
-        nextGuess = guessMinRank feedback prevGuess
-    in  if guesses >= cutoff
-          then (guesses, history, R2)
-          else case nextGuess of
-            RankGuess { rgComplete = False } -> loop
-              nextGuess
-              lowestAnsRank
-              (guesses + 1)
-              (history ++ [rgRank nextGuess])
-              cutoff
-            RankGuess { rgRank = rank, rgComplete = True } ->
-              (guesses + 1, history ++ [rank], rank)
-
-
-testMaxRankGuess :: Rank -> (Int, [Rank], Rank)
-testMaxRankGuess highestAnsRank =
-  let initialGuess = RankGuess { rgRank     = toEnum 9
-                               , rgMaxRank  = toEnum 9
-                               , rgMinRank  = toEnum 3
-                               , rgStep     = 6
-                               , rgComplete = False
-                               }
-  in  loop initialGuess highestAnsRank 0 [] 10
- where
-  loop :: RankGuess -> Rank -> Int -> [Rank] -> Int -> (Int, [Rank], Rank)
-  loop prevGuess highestAnsRank guesses history cutoff =
-    let feedback  = if highestAnsRank > rgRank prevGuess then 1 else 0
-        nextGuess = guessMaxRank feedback prevGuess
-    in  if guesses >= cutoff
-          then (guesses, history, R2)
-          else case nextGuess of
-            RankGuess { rgComplete = False } -> loop
-              nextGuess
-              highestAnsRank
-              (guesses + 1)
-              (history ++ [rgRank nextGuess])
-              cutoff
-            RankGuess { rgRank = rank, rgComplete = True } ->
-              (guesses + 1, history ++ [rank], rank)
-
-
-testGame :: [Card] -> [(([Card], GameState),Int)]
-testGame answer =
-  let initialGameState = initialGuess $ length answer
-      initialFeedback  = feedback answer (fst initialGameState)
-      initialHistory   = [(initialGameState, 1)]
-  in  loop initialGameState initialHistory 1 100
- where
-  loop
-    :: ([Card], GameState)
-    -> [(([Card], GameState),Int)]
-    -> Int
-    -> Int
-    -> [(([Card], GameState),Int)]
-  loop gs history c cutoff =
-    let currentFeedback = feedback answer (fst gs)
-        nextGameState   = nextGuess gs currentFeedback
-        nextHistory     = history ++ [(nextGameState, c)]
-        done = case nextGameState of
-          (_, Done {}) -> True
-          _ -> False
-    in  if c > cutoff || done
-          then nextHistory
-          else loop nextGameState nextHistory (c + 1) cutoff
